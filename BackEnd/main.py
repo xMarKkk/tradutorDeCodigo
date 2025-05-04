@@ -26,9 +26,9 @@ csharp_contextuais = {
     "where", "with", "yield"
 }
 
-start_class_c = """
+start_class_csharp = """
 
-        public class Strar {
+        public class Start {
             private string nome;
             public void Falar() {
             Console.WriteLine("Olá!");
