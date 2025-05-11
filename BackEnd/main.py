@@ -39,3 +39,6 @@ start_class_csharp = """
 def encontrar_palavras_chave_csharp(codigo: str) -> list:
     tokens = codigo.split()
     return [token for token in tokens if token in csharp_identificadores]
+
+palavras_chave_encontradas = encontrar_palavras_chave_csharp(start_class_csharp)
+print("Palavras-chave C# encontradas:", palavras_chave_encontradas)
