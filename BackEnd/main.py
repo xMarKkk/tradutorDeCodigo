@@ -14,7 +14,7 @@ from datetime import datetime
 
 caminho_txt = r"C:\\TradutorDeCodigo\\assets\\arquivo.txt"
 
-# Dicionário com substituições
+# Indificadores a serem substituidos 
 substituicoes = {
     "Def": "public class",
     "Name": "Nome",
