@@ -1,0 +1,12 @@
+Def Teste {
+public string Name;
+public  int Yeras;
+public Pessoa(string Natan, int 24) {
+Name = nome;
+Yeras = idade;
+}
+public void Apresentar()
+{
+Console.WriteLine($"Olá, meu nome é {Name} e tenho {Yeras} anos.")
+}
+}

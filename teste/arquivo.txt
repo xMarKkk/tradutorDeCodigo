@@ -1,0 +1,16 @@
+    public class Teste {
+    
+        public string Nome;
+        public  int Idade;
+
+        public Pessoa(string Natan, int 24) {
+            Nome = nome;
+            Idade = idade;
+        }
+
+        public void Apresentar()
+        {
+            Console.WriteLine($"Olá, meu nome é {Nome} e tenho {Idade} anos.")
+        }
+    
+    }

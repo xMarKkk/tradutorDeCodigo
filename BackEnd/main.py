@@ -1,44 +1,53 @@
-###As palavras-chave são identificadores predefinidos e reservados que têm significados especiais para o compilador. Eles não podem ser usados como identificadores em seu programa, a menos que incluam @ como um prefixo. Por exemplo, @if é um identificador válido, mas if não é porque if é uma palavra-chave.
+import os
+import tkinter as tk
+from tkinter import filedialog
+from datetime import datetime
 
 
-csharp_identificadores = {
-    "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char",
-    "checked", "class", "const", "continue", "decimal", "default", "delegate",
-    "do", "double", "else", "enum", "event", "explicit", "extern", "false",
-    "finally", "fixed", "float", "for", "foreach", "goto", "if", "implicit",
-    "in", "int", "interface", "internal", "is", "lock", "long", "namespace",
-    "new", "null", "object", "operator", "out", "override", "params", "private",
-    "protected", "public", "readonly", "ref", "return", "sbyte", "sealed",
-    "short", "sizeof", "stackalloc", "static", "string", "struct", "switch",
-    "this", "throw", "true", "try", "typeof", "uint", "ulong", "unchecked",
-    "unsafe", "ushort", "using", "virtual", "void", "volatile", "while"
+## a letra 'r'  significa que só vai ler o arquivo 'R'--->Read---->Ler
+## a letra 'w'  significa que  vai ler o arquivo e você pode substituir o seu valor 'W'--->Write---->Escrever
+## a letra 'a'  significa que vai adicionar informação ao arquivo 'A'--->Append---->Adicionar
+## usar read() para arquivos simples
+## usar readlines() para arquivos maiores
+
+
+
+caminho_txt = r"C:\\TradutorDeCodigo\\assets\\arquivo.txt"
+
+# Dicionário com substituições
+substituicoes = {
+    "Def": "public class",
+    "Name": "Nome",
+    "Yeras": "Idade"
 }
 
 
-### Uma palavra-chave contextual é usada para fornecer um significado específico no código, mas não é uma palavra reservada em C#. Algumas palavras-chave contextuais, como partial e where, têm significados especiais em dois ou mais contextos.
+with open(caminho_txt, "r", encoding="utf-8") as arquivo:
+    conteudo = arquivo.read()
 
-csharp_contextuais = {
-    "add", "allows", "alias", "and", "ascending", "args", "async", "await", "by",
-    "descending", "dynamic", "equals", "extension", "field", "file", "from", "get",
-    "global", "group", "init", "into", "join", "let", "managed", "nameof", "nint",
-    "not", "notnull", "nuint", "on", "or", "orderby", "partial", "record", "remove",
-    "required", "scoped", "select", "set", "unmanaged", "value", "var", "when",
-    "where", "with", "yield"
-}
 
-start_class_csharp = """
+for original, novo in substituicoes.items():
+    conteudo = conteudo.replace(original, novo)
 
-        public class Start {
-            private string nome;
-            public void Falar() {
-            Console.WriteLine("Olá!");
-        }
-        }
-"""
 
-def encontrar_palavras_chave_csharp(codigo: str) -> list:
-    tokens = codigo.split()
-    return [token for token in tokens if token in csharp_identificadores]
+root = tk.Tk()
+root.withdraw()  
 
-palavras_chave_encontradas = encontrar_palavras_chave_csharp(start_class_csharp)
-print("Palavras-chave C# encontradas:", palavras_chave_encontradas)
+pasta_destino = filedialog.askdirectory(title="teste.txt")
+
+if pasta_destino:
+   
+    nome_base = os.path.splitext(os.path.basename(caminho_txt))[0]
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    nome_arquivo = f"{nome_base}_modificado_{timestamp}.txt"
+    
+    
+    caminho_saida = os.path.join(pasta_destino, nome_arquivo)
+
+  
+    with open(caminho_saida, "w", encoding="utf-8") as novo_arquivo:
+        novo_arquivo.write(conteudo)
+
+    print(f"Arquivo salvo com sucesso em: {caminho_saida}")
+else:
+    print("Nenhuma pasta foi selecionada. Operação cancelada.")
