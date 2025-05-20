@@ -27,6 +27,7 @@ if not caminho_entrada:
 
 # Dicionário com palavras a substituir (tudo no texto)
 substituicoes = {
+    "def": "public static void{}",
     "as": "as",
     "super()": "base",
     "bool": "bool",
@@ -84,13 +85,13 @@ substituicoes = {
     "métodos padrão": "virtual",
     "None (retorno)": "void",
     "lock / thread-safe controle": "volatile",
-    "while": "while"
+    "while": "while",
+    "print": "Console.WriteLine"
 }
 
 
 with open(caminho_entrada, "r", encoding="utf-8") as arquivo:
     conteudo = arquivo.read()
-
 
 for original, novo in substituicoes.items():
     conteudo = conteudo.replace(original, str(novo))  
