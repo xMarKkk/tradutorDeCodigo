@@ -1,182 +1,279 @@
-import tkinter as tk
-from tkinter import filedialog
+import sys
 import re
+from PyQt6.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QPushButton,
+    QTextEdit, QLabel, QFileDialog, QHBoxLayout, QMessageBox
+)
+from PyQt6.QtCore import Qt
 
-def detectar_tipo(valor):
-    valor = valor.strip()
-     # Se o valor começa com aspas simples ou duplas, é uma string
-    if valor.startswith("\"") or valor.startswith("'"):
-        return "string"
-    # Se o valor é 'true' ou 'false' (case-insensitive), é um booleano
-    elif valor.lower() in ["true", "false"]:
-        return "bool"
-    # Se o valor corresponde a um número decimal (ex: 3.14), é um double (float em C#)
-    elif re.match(r"^\d+\.\d+$", valor):  
-        return "double"
-     # Se o valor é um número inteiro (ex: 42), é um int
-    elif re.match(r"^\d+$", valor): 
-        return "int"
-    # Se o valor está entre colchetes, é uma lista em Python
-    elif valor.startswith("[") and valor.endswith("]"):
-        elementos = valor[1:-1].split(",")
-         # Se a lista está vazia, retorna uma lista genérica de objetos
-        if not elementos:
-            return "List<object>"
-        # Detecta o tipo do primeiro elemento para definir o tipo da lista em C#
-        primeiro = elementos[0].strip()
-        tipo_elemento = detectar_tipo(primeiro)
-        return f"List<{tipo_elemento}>"
-    # Se contém 'int.Parse', provavelmente é um int vindo da entrada do usuário convertida em C#
-    elif "int.Parse" in valor:
-        return "int"
-     # Se contém 'Console.ReadLine()', é uma string obtida da entrada do usuário
-    elif "Console.ReadLine()" in valor:
-        return "string"
-    # Caso não corresponda a nenhum tipo conhecido, retorna 'var' para tipo implícito
-    else:
-        return "var"
 
-def converter_parametros(param_str):
-    params = [p.strip() for p in param_str.split(",") if p.strip()]
-    csharp_params = [f"int {p}" for p in params]  # padrão: int
-    return ", ".join(csharp_params)
+class PythonToCSharpConverter:
+    def __init__(self):
+        # Mapeamento Selenium By
+        self.selenium_by_map = {
+            'By.ID': 'By.Id',
+            'By.NAME': 'By.Name',
+            'By.XPATH': 'By.XPath',
+            'By.CSS_SELECTOR': 'By.CssSelector',
+            'By.CLASS_NAME': 'By.ClassName',
+            'By.TAG_NAME': 'By.TagName',
+            'By.LINK_TEXT': 'By.LinkText',
+            'By.PARTIAL_LINK_TEXT': 'By.PartialLinkText'
+        }
 
-def converter_python_para_csharp(linha, variaveis_declaradas):
-    linha = linha.strip()
-# se conter instrução print() em Python e converte para Console.WriteLine(...)
-    if linha.startswith("print("):
-        conteudo = linha[6:-1]
-        return f'Console.WriteLine({conteudo});'
-# Verifica se a linha envolve uma entrada de usuário com input(). Se a entrada for numérica (int(input(...))), converte para int.Parse(Console.ReadLine()). Caso contrário, usa Console.ReadLine().
-    if "input(" in linha:
-        var, valor = linha.split("=", 1)
-        var = var.strip()
-        prompt = ""
-        if "int(input(" in valor:
-            prompt = valor.split("int(input(")[1].split(")")[0]
-            valor_csharp = "int.Parse(Console.ReadLine())"
-            tipo = "int"
+    def detect_type(self, value):
+        value = value.strip()
+        if re.match(r'^-?\d+$', value):
+            return 'int'
+        elif re.match(r'^-?\d+\.\d+$', value):
+            return 'float'
+        elif value.lower() in ['true', 'false']:
+            return 'bool'
+        elif value.startswith('"') or value.startswith("'"):
+            return 'string'
+        elif value.startswith('['):
+            return 'List<string>'
+        elif value.startswith('{'):
+            return 'Dictionary<string, string>'
         else:
-            prompt = valor.split("input(")[1].split(")")[0]
-            valor_csharp = "Console.ReadLine()"
-            tipo = "string"
+            return 'var'
 
-        if var not in variaveis_declaradas:
-            variaveis_declaradas[var] = tipo
-            return f'{tipo} {var} = {valor_csharp}; // {prompt}'
+    def convert(self, python_code):
+        lines = python_code.split('\n')
+        converted_lines = []
+
+        for line in lines:
+            original_line = line
+            indent = '    ' * (len(line) - len(line.lstrip())) // 4
+            line = line.strip()
+
+            if line == '':
+                converted_lines.append('')
+                continue
+
+            # Selenium By conversão
+            for key, value in self.selenium_by_map.items():
+                line = line.replace(key, value)
+
+            # Selenium driver e wait
+            line = re.sub(r'webdriver\.Chrome\(\)', 'new ChromeDriver()', line)
+            line = re.sub(r'WebDriverWait\((.*?),\s*(\d+)\)', r'new WebDriverWait(\1, TimeSpan.FromSeconds(\2))', line)
+            line = re.sub(r'driver\.get\((.+?)\)', r'driver.Navigate().GoToUrl(\1);', line)
+            line = re.sub(r'driver\.find_element\((.+?)\)', r'driver.FindElement(\1)', line)
+            line = re.sub(r'driver\.find_elements\((.+?)\)', r'driver.FindElements(\1)', line)
+            line = line.replace('.click()', '.Click();')
+            line = re.sub(r'\.send_keys\((.+?)\)', r'.SendKeys(\1);', line)
+            line = re.sub(r'\.get_attribute\((.+?)\)', r'.GetAttribute(\1)', line)
+
+            # Tratamento básico de exceções
+            if line.startswith('try:'):
+                line = 'try {'
+            elif line.startswith('except'):
+                line = 'catch (Exception e) {'
+            elif line.startswith('finally:'):
+                line = 'finally {'
+
+            # Variáveis
+            match = re.match(r'(\w+)\s*=\s*(.+)', line)
+            if match and not line.startswith(('def ', 'for ', 'if ', 'elif ', 'else', 'while ')):
+                var, value = match.groups()
+                csharp_type = self.detect_type(value)
+                line = f'{csharp_type} {var} = {value};'
+
+            # Funções
+            if line.startswith('def '):
+                func_name = re.findall(r'def (\w+)', line)[0]
+                params = re.findall(r'\((.*?)\)', line)[0]
+                csharp_params = ', '.join([
+                    f'string {p.strip()}' for p in params.split(',')
+                    if p.strip() != ''
+                ])
+                line = f'void {func_name}({csharp_params})' + ' {'
+
+            # If / elif / else
+            elif line.startswith('if '):
+                condition = line[3:].rstrip(':')
+                line = f'if ({condition})' + ' {'
+            elif line.startswith('elif '):
+                condition = line[5:].rstrip(':')
+                line = f'else if ({condition})' + ' {'
+            elif line.startswith('else'):
+                line = 'else {'
+
+            # Loops
+            elif line.startswith('for '):
+                match = re.match(r'for (\w+) in range\((\d+),\s*(\d+)\):', line)
+                if match:
+                    var, start, end = match.groups()
+                    line = f'for (int {var} = {start}; {var} < {end}; {var}++)' + ' {'
+                else:
+                    line = '// Unsupported for-loop'
+
+            elif line.startswith('while '):
+                condition = line[6:].rstrip(':')
+                line = f'while ({condition})' + ' {'
+
+            # Fechamento de blocos
+            if line.endswith(':'):
+                line = line[:-1] + ' {'
+
+            converted_lines.append(indent + line)
+
+        # Fecha blocos
+        indent_level = 0
+        final_lines = []
+        for line in converted_lines:
+            stripped = line.strip()
+
+            if stripped.endswith('{'):
+                final_lines.append('    ' * indent_level + stripped)
+                indent_level += 1
+            elif stripped == '':
+                final_lines.append('')
+            else:
+                final_lines.append('    ' * indent_level + stripped)
+                if not (stripped.endswith(';') or stripped.endswith('{') or stripped.startswith('//')):
+                    final_lines[-1] += ';'
+
+        for _ in range(indent_level):
+            indent_level -= 1
+            final_lines.append('    ' * indent_level + '}')
+
+        return '\n'.join(final_lines)
+
+
+class ConverterApp(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.converter = PythonToCSharpConverter()
+        self.dark_mode = False
+        self.init_ui()
+
+    def init_ui(self):
+        self.setWindowTitle("Conversor Python → C# (com Selenium)")
+        self.setGeometry(100, 100, 1000, 650)
+
+        layout = QVBoxLayout()
+
+        title = QLabel("Conversor Python → C#")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("font-size: 24px; font-weight: bold;")
+        layout.addWidget(title)
+
+        self.input_text = QTextEdit()
+        self.input_text.setPlaceholderText("Cole seu código Python aqui...")
+        layout.addWidget(self.input_text)
+
+        buttons_layout = QHBoxLayout()
+
+        open_button = QPushButton("Abrir Arquivo")
+        open_button.clicked.connect(self.open_file)
+        buttons_layout.addWidget(open_button)
+
+        convert_button = QPushButton("Converter")
+        convert_button.clicked.connect(self.convert_code)
+        buttons_layout.addWidget(convert_button)
+
+        save_button = QPushButton("Salvar Arquivo")
+        save_button.clicked.connect(self.save_file)
+        buttons_layout.addWidget(save_button)
+
+        clear_button = QPushButton("Limpar")
+        clear_button.clicked.connect(self.clear_text)
+        buttons_layout.addWidget(clear_button)
+
+        theme_button = QPushButton("Alternar Tema")
+        theme_button.clicked.connect(self.toggle_theme)
+        buttons_layout.addWidget(theme_button)
+
+        layout.addLayout(buttons_layout)
+
+        self.output_text = QTextEdit()
+        self.output_text.setPlaceholderText("Código C# convertido aparecerá aqui...")
+        layout.addWidget(self.output_text)
+
+        self.setLayout(layout)
+        self.apply_light_theme()
+
+    def convert_code(self):
+        python_code = self.input_text.toPlainText()
+        if not python_code.strip():
+            QMessageBox.warning(self, "Aviso", "O campo de entrada está vazio!")
+            return
+        csharp_code = self.converter.convert(python_code)
+        self.output_text.setPlainText(csharp_code)
+
+    def clear_text(self):
+        self.input_text.clear()
+        self.output_text.clear()
+
+    def toggle_theme(self):
+        if self.dark_mode:
+            self.apply_light_theme()
         else:
-            return f'{var} = {valor_csharp}; // {prompt}'
-# Detecta uma estrutura condicional if em Python e a converte para if (...) { em C#.
-    if linha.startswith("if "):
-        condicao = linha[3:-1]
-        return f'if ({condicao})\n{{'
-#Converte um bloco else: do Python para } else { em C#.
-    if linha.startswith("else"):
-        return "} else {"
-#Detecta um loop while do Python e o converte para a estrutura de loop while (...) { em C#.
-    if linha.startswith("while "):
-        condicao = linha[6:-1]
-        return f'while ({condicao})\n{{'
-#Identifica um for com range(...) em Python e o converte para um for (int i = 0; i < n; i++) em C#.
-    if linha.startswith("for ") and "in range" in linha:
-        var = linha.split(" ")[1]
-        num = linha.split("range(")[1].split(")")[0]
-        variaveis_declaradas[var] = "int"
-        return f'for (int {var} = 0; {var} < {num}; {var}++)\n{{'
-#Converte a definição de uma função (def nome(...)) para um método static void nome(...) em C# com parâmetros assumindo tipo int por padrão.
-    if linha.startswith("def "):
-        partes = linha[4:-1].split("(")
-        nome = partes[0]
-        parametros = partes[1] if len(partes) > 1 else ""
-        csharp_parametros = converter_parametros(parametros)
-        return f'static void {nome}({csharp_parametros})\n{{'
-#Converte a instrução return do Python para a mesma instrução em C# (return ...;).
-    if linha.startswith("return "):
-        return f'return {linha[7:]};'
-# Detecta o tipo da variável (int, double, bool, string, List<T>) e gera a declaração apropriada em C#. Caso a variável já tenha sido declarada, apenas atualiza o valor.
-    if "=" in linha and "==" not in linha:
-        var, valor = linha.split("=", 1)
-        var = var.strip()
-        valor = valor.strip()
+            self.apply_dark_theme()
 
-        if "int(input(" in valor:
-            valor_csharp = "int.Parse(Console.ReadLine())"
-            tipo = "int"
-        elif "input(" in valor:
-            valor_csharp = "Console.ReadLine()"
-            tipo = "string"
-        else:
-            valor_csharp = valor
-            tipo = detectar_tipo(valor)
+    def apply_dark_theme(self):
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #2b2b2b;
+                color: #f0f0f0;
+            }
+            QTextEdit {
+                background-color: #3c3f41;
+                color: #f0f0f0;
+            }
+            QPushButton {
+                background-color: #555555;
+                color: white;
+                border-radius: 5px;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                background-color: #777777;
+            }
+        """)
+        self.dark_mode = True
 
-        if tipo.startswith("List"):
-            valor_csharp = f"new {tipo} {{ {valor[1:-1]} }}"
+    def apply_light_theme(self):
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #f5f5f5;
+                color: #333333;
+            }
+            QTextEdit {
+                background-color: white;
+                color: #333333;
+            }
+            QPushButton {
+                background-color: #dddddd;
+                color: black;
+                border-radius: 5px;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                background-color: #cccccc;
+            }
+        """)
+        self.dark_mode = False
 
-        if var not in variaveis_declaradas:
-            variaveis_declaradas[var] = tipo
-            return f'{tipo} {var} = {valor_csharp};'
-        else:
-            return f'{var} = {valor_csharp};'
-#Trata linhas em branco como fim de bloco em C#, adicionando }.
-    if linha == "":
-        return "}"
-#Se nenhum dos if for atendido, comenta a linha original de Python com // no C# indicando que não foi convertida.
-    return "// " + linha
+    def open_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Abrir Arquivo Python", "", "Arquivos Python (*.py)")
+        if file_path:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                self.input_text.setPlainText(content)
 
-def converter_arquivo_python_para_csharp():
-    root = tk.Tk()
-    root.withdraw()
-    caminho_entrada = filedialog.askopenfilename(
-        title="Selecione o arquivo Python (.txt)",
-        filetypes=[("Arquivos de Texto", "*.txt")]
-    )
+    def save_file(self):
+        file_path, _ = QFileDialog.getSaveFileName(self, "Salvar Arquivo C#", "", "Arquivos C# (*.cs)")
+        if file_path:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(self.output_text.toPlainText())
+            QMessageBox.information(self, "Sucesso", "Arquivo salvo com sucesso!")
 
-    if not caminho_entrada:
-        print("Nenhum arquivo selecionado.")
-        return
-
-    with open(caminho_entrada, 'r', encoding='utf-8') as f:
-        linhas = f.readlines()
-
-    variaveis_declaradas = {}
-    linhas_convertidas = [converter_python_para_csharp(linha, variaveis_declaradas) for linha in linhas]
-
-    estrutura_csharp = [
-        "using System;",
-        "using System.Collections.Generic;",
-        "",
-        "namespace ProgramaConvertido",
-        "{",
-        "    class Program",
-        "    {",
-        "        static void Main(string[] args)",
-        "        {",
-        "            // Código convertido de Python para C#",
-    ]
-
-    for linha in linhas_convertidas:
-        estrutura_csharp.append("            " + linha)
-
-    estrutura_csharp += [
-        "        }",
-        "    }",
-        "}"
-    ]
-
-    caminho_saida = filedialog.asksaveasfilename(
-        defaultextension=".cs",
-        filetypes=[("Arquivo C#", "*.cs")],
-        title="Salvar arquivo convertido como"
-    )
-
-    if not caminho_saida:
-        print("Arquivo não salvo.")
-        return
-
-    with open(caminho_saida, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(estrutura_csharp))
-
-    print(f"Arquivo convertido salvo em: {caminho_saida}")
 
 if __name__ == "__main__":
-    converter_arquivo_python_para_csharp()
+    app = QApplication(sys.argv)
+    window = ConverterApp()
+    window.show()
+    sys.exit(app.exec())
