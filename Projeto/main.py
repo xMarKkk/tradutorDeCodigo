@@ -14,7 +14,104 @@ def inferir_tipo(valor):
         pass
     if valor.lower() in ['true', 'false']:
         return "bool"
+    if valor.startswith("[") and valor.endswith("]"):
+        return "List<int>"  # Simples suposição para lista de inteiros
     return "var"
+
+def converter_linha(linha, variaveis):
+    linha = linha.strip()
+    # Comentário
+    if linha.startswith("#"):
+        return "//" + linha[1:]
+
+    # print
+    m_print = re.match(r'print\((.*)\)', linha)
+    if m_print:
+        conteudo = m_print.group(1)
+        return f'Console.WriteLine({conteudo});'
+
+    # if
+    m_if = re.match(r'if (.*):', linha)
+    if m_if:
+        cond = m_if.group(1)
+        return f'if ({cond})' + " {"
+
+    # else
+    if linha == "else:":
+        return "} else {"
+
+    # while
+    m_while = re.match(r'while (.*):', linha)
+    if m_while:
+        cond = m_while.group(1)
+        return f'while ({cond})' + " {"
+
+    # for (somente em range simples: for i in range(n):)
+    m_for = re.match(r'for (\w+) in range\((\d+)\):', linha)
+    if m_for:
+        var = m_for.group(1)
+        fim = m_for.group(2)
+        # Declara variável se não declarada
+        if var not in variaveis:
+            variaveis.add(var)
+            decl = f"int {var}"
+        else:
+            decl = var
+        return f'for ({decl} = 0; {var} < {fim}; {var}++)' + " {"
+
+    # atribuição simples
+    m_atr = re.match(r'(\w+)\s*=\s*(.+)', linha)
+    if m_atr:
+        var = m_atr.group(1)
+        val = m_atr.group(2)
+        tipo = inferir_tipo(val)
+        # Declara variável se não declarada
+        if var not in variaveis:
+            variaveis.add(var)
+            return f"{tipo} {var} = {val};"
+        else:
+            return f"{var} = {val};"
+
+    # return
+    if linha.startswith("return "):
+        return linha + ";"
+
+    # fim de bloco (deduzido pela indentação fora do converter_linha)
+    # Só retornar linha vazia
+    return linha + ";"
+
+def converter_corpo(corpo):
+    linhas_csharp = []
+    variaveis = set()
+    indent_level = 1
+    indent_stack = []
+
+    for i, linha in enumerate(corpo):
+        linha_stripped = linha.strip()
+        # detectar fim de bloco (deduzindo pela indentação menor que anterior)
+        # Como corpo é já indentado, simplificamos
+        # Apenas fechar blocos se encontrar linha '}' na python não existe, então baseado em indentação (complexo para um conversor simples)
+        # Vamos assumir que o corpo já veio separado, e converter { e } pelo if, else, for, while.
+
+        # converter a linha
+        linha_csharp = converter_linha(linha, variaveis)
+
+        # Adicionar indentação (4 espaços * indent_level)
+        linhas_csharp.append("    " * indent_level + linha_csharp)
+
+        # Ajustar indent_level para blocos
+        # Abrir bloco
+        if linha_csharp.endswith("{"):
+            indent_level += 1
+        # Fechar bloco na linha seguinte ao else ou fim bloco não detectado aqui (simplificação)
+        # Para simplificar, nada fecha aqui, pois o bloco fecha quando indentação python cai (não tratado aqui)
+
+    # Fechar blocos abertos - para evitar erros, fechar todos ao final
+    while indent_level > 1:
+        indent_level -= 1
+        linhas_csharp.append("    " * indent_level + "}")
+
+    return linhas_csharp
 
 def converter_metodo(nome, parametros, corpo):
     tipo_retorno = "void"
@@ -40,13 +137,7 @@ def converter_metodo(nome, parametros, corpo):
     params_str = ", ".join([f"{t} {n}" for t, n in tipo_parametros])
     linhas_csharp.append(f"public static {tipo_retorno} {nome}({params_str})")
     linhas_csharp.append("{")
-    for linha in corpo:
-        linha_stripped = linha.strip()
-        if linha_stripped.startswith("return "):
-            linhas_csharp.append(f"    {linha_stripped};")
-        else:
-            if linha_stripped != "":
-                linhas_csharp.append(f"    {linha_stripped};")
+    linhas_csharp.extend(converter_corpo(corpo))
     linhas_csharp.append("}")
     linhas_csharp.append("")
     return "\n".join(linhas_csharp), tipo_retorno
@@ -79,7 +170,6 @@ def extrair_funcoes(codigo):
 
     for linha in linhas:
         if linha.strip().startswith("def "):
-            # salva a função anterior se existir
             if nome is not None:
                 funcoes.append( (nome, params, corpo) )
             m = re.match(r'def (\w+)\((.*?)\):', linha.strip())
@@ -93,7 +183,6 @@ def extrair_funcoes(codigo):
                 nome = None
                 dentro_func = False
         elif dentro_func:
-            # considerar que corpo tem indentação maior que base
             if linha.strip() == "":
                 continue
             if indent_base is None:
@@ -102,12 +191,10 @@ def extrair_funcoes(codigo):
             if indent_atual >= indent_base:
                 corpo.append(linha[indent_base:])
             else:
-                # fim da função
                 funcoes.append( (nome, params, corpo) )
                 nome = None
                 dentro_func = False
                 indent_base = None
-    # pegar última função se no final do arquivo
     if nome is not None:
         funcoes.append( (nome, params, corpo) )
     return funcoes
@@ -145,22 +232,33 @@ class ConversorApp(QWidget):
         for nome, parametros, corpo in funcoes:
             metodo, tipo_retorno = converter_metodo(nome, parametros, corpo)
             metodos_csharp.append(metodo)
-            # Para testes, chamar cada função com argumentos fixos "3" e "5" se tiver pelo menos 2 parâmetros
-            args_teste = []
-            for _ in parametros:
-                args_teste.append("3")
+            args_teste = ["3" for _ in parametros]
             chamadas.append({"nome": nome, "args": args_teste, "retorno": tipo_retorno})
 
-        metodos_str = "\n".join(metodos_csharp)
+        metodos_indentados = []
+        for metodo in metodos_csharp:
+            linhas = metodo.splitlines()
+            linhas_indentadas = [(" " * 8) + linha if linha.strip() != "" else "" for linha in linhas]
+            metodos_indentados.append("\n".join(linhas_indentadas))
+
+        metodos_str = "\n\n".join(metodos_indentados)
+
         main_str = gerar_main(chamadas)
+        linhas_main = main_str.splitlines()
+        linhas_main_indentadas = [(" " * 8) + linha if linha.strip() != "" else "" for linha in linhas_main]
+        main_indentado = "\n".join(linhas_main_indentadas)
 
         codigo_csharp_final = f"""using System;
+using System.Collections.Generic;
 
-class Program
+namespace MeuProjeto
 {{
+    class Program
+    {{
 {metodos_str}
 
-{main_str}
+{main_indentado}
+    }}
 }}
 """
         self.text_saida.setPlainText(codigo_csharp_final)
