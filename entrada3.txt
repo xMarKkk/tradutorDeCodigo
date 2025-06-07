@@ -1,0 +1,19 @@
+using System;
+using System.Collections.Generic;
+
+namespace MeuProjeto
+{
+    class Program
+    {
+        public static string mensagem()
+        {
+            return "Olá, mundo!";
+        }
+
+        static void Main(string[] args)
+        {
+            string resultado = mensagem();
+            Console.WriteLine($"Resultado de mensagem: {resultado}");
+        }
+    }
+}
